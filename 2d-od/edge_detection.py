@@ -3,13 +3,8 @@
 # Python 2/3 compatibility
 from __future__ import print_function
 
-import math
-
 import cv2 as cv
 import numpy as np
-
-# built-in module
-import sys
 
 
 def resize(img, fx, fy):
@@ -17,7 +12,7 @@ def resize(img, fx, fy):
 
 
 def make_mask(img):
-    h, w= img.shape
+    h, w = img.shape
     rectangle = np.array([[0, h/3], [w, h/3], [w, h], [0, h]])
 
     mask = cv.fillPoly(np.zeros_like(img), np.int32([rectangle]), 255)
@@ -30,10 +25,6 @@ def img_prep(img):
     return cv.GaussianBlur(gray, (5, 5), 0)
 
 
-def blur(img):
-    return cv.GaussianBlur(img, (5, 5), 0)
-
-
 def edge_detection(img, threshold1, threshold2):
     return cv.Canny(img, threshold1, threshold2, apertureSize=5)
 
@@ -43,60 +34,20 @@ def white_mask(img):
     return cv.bitwise_and(img, white_img)
 
 
-def overlay_images(img, overlays, colours):
-    """
-    Overlays images in on an image with a specific colour
+def combine_images_alpha(front, background):
+    # Extracts alpha channel from transparent image as mask
+    alpha = front[:, :, 3]
+    alpha = cv.merge([alpha, alpha, alpha])
 
-    Precondition:
-    - len(overlays) <= len(colours)
-    """
-    vis = img.copy()
+    # Extracts bgr channels from transparent image
+    front_bgr = front[:, :, 0:3]
 
-    # Dimmer video
-    vis = np.uint8(vis/2.)
-
-    for i in range(0, len(overlays)):
-        vis[overlays[i] != 0] = colours[i]
-
-    return vis
-
-
-def cured_line_detection(edges, min_line_length, max_line_gap):
-    lines = cv.HoughLinesP(edges, cv.HOUGH_PROBABILISTIC, np.pi/180, 30, min_line_length, max_line_gap)
-    return lines
-
-
-def draw_curved_lines(img, lines, colour):
-    for x in range(0, len(lines)):
-        for x1, y1, x2, y2 in lines[x]:
-            pts = np.array([[x1, y1], [x2, y2]], np.int32)
-            cv.polylines(img, [pts], True, colour)
-
-
-def straight_line_detection(edges):
-    lines = cv.HoughLines(edges, cv.HOUGH_PROBABILISTIC, np.pi/180, 100)
-    return lines
-
-
-def draw_straight_line(img, lines, colour):
-    for i in range(0, len(lines)):
-        arr = np.array(lines[i][0], dtype=np.float64)
-        r, theta = arr
-        a = np.cos(theta)
-        b = np.sin(theta)
-        x0 = a * r
-        y0 = b * r
-        x1 = int(x0 + 1000 * (-b))
-        y1 = int(y0 + 1000 * (a))
-        x2 = int(x0 - 1000 * (-b))
-        y2 = int(y0 - 1000 * (a))
-        cv.line(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
+    # Blend the two images using the alpha channel as controlling mask
+    return np.where(alpha == (0, 0, 0), background, front_bgr)
 
 
 def main():
     cv.namedWindow('edge')
-    # cv.createTrackbar('thrs1', 'edge', 2000, 5000, nothing)
-    # cv.createTrackbar('thrs2', 'edge', 4000, 5000, nothing)
 
     cap = cv.VideoCapture("../20230605_163120.mp4")
 
@@ -119,37 +70,34 @@ def main():
         # Applies greyscale and gaussian blur
         prepped_img = make_mask(img_prep(img))
 
-        # EDGE DETECTION 1 - CANNY EDGE DETECTION
+        # START OF EDGE DETECTION 1 - CANNY EDGE DETECTION
         # Threshold values were selected based on previous testing
         edges = edge_detection(prepped_img, 2000, 4000)
 
-        # EDGE DETECTION 2 - WHITE MASK
-        white_img = white_mask(prepped_img)
+        # Draws edges on transparent image
+        edges_transparent = np.zeros((540, 960, 4), dtype=np.uint8)
+        edges_transparent[edges != 0] = (0, 0, 255, 255)
 
-        # straight_lines = straight_line_detection(edges)
-        #
-        # draw_straight_line(img, straight_lines, (255, 0, 0))
+        # END OF EDGE DETECTION 1
 
-        # curved_lines = cured_line_detection(edges, 50, 5)
-        #
-        # black_img = np.zeros((700, 1000, 3), dtype=np.uint8)
-        #
-        # draw_curved_lines(black_img, curved_lines, (255, 0, 0))
+        # START OF EDGE DETECTION 2 - WHITE MASK
+        conts = cv.findContours(white_mask(prepped_img), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+        conts = conts[0] if len(conts) == 2 else conts[1]
 
-        cnts = cv.findContours(white_mask(prepped_img), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-        cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+        # Draws contours on transparent image
+        conts_transparent = np.zeros((540, 960, 4), dtype=np.uint8)
+        cv.drawContours(conts_transparent, conts, -1, (255, 255, 255, 255), 10)  # change first three channels to any color you want.
 
-        for c in cnts:
-            cv.drawContours(img, [c], -1, (255, 0, 0), thickness=5)
+        # END OF EDGE DETECTION 2
 
-        # Colours for the overlay
-        colours = [(0, 255, 0), (0, 0, 255), (255, 0, 0)]
+        # Combines EDGE DETECTION 1 & 2
+        combined_detection = cv.bitwise_and(conts_transparent, edges_transparent)
 
-        # Overlays edges and white mask to current frame
-        vis = overlay_images(img, [edges], colours)
+        # Overlays combined edge detections with current video frame
+        result = combine_images_alpha(combined_detection, img)
 
-        # Displays frame with overlay
-        cv.imshow('edge', vis)
+        # Displays video frame with edge detection overlaid
+        cv.imshow('edge', result)
 
         # Checks to see if ESC key is pressed
         key = cv.waitKey(1)
