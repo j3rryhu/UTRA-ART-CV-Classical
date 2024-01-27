@@ -11,10 +11,12 @@ def extract_features(image, isNmsEnabled: bool) -> any:
 
     # Instantiate FAST detector.
     fast_feature_detector = cv2.FastFeatureDetector_create()
+    fast_feature_detector.setThreshold(20)
 
     if isNmsEnabled:
         # Get corners.
         corners = fast_feature_detector.detect(image, None)
+
     else:
         fast_feature_detector.setNonmaxSuppression(0)
         corners = fast_feature_detector.detect(image, None)

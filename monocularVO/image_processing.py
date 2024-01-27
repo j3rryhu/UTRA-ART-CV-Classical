@@ -1,6 +1,8 @@
 import cv2
 from common_functions import *
-from input_reading import ZedCamera
+
+# from input_reading import ZedCamera
+
 
 def blur(image):
     return cv2.bilateralFilter(image, 9, 175, 175)
@@ -10,10 +12,14 @@ def blur(image):
 def gray(image):
     return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-def undistort(image, zedCamera: ZedCamera):
-    return cv2.undistort(image, zedCamera.camera_matrix, zedCamera.dist, None, zedCamera.new_camera_mtx)
 
-def process_image(image, functions=[undistort,gray, blur]):
+# def undistort(image, zedCamera: ZedCamera):
+#     return cv2.undistort(
+#         image, zedCamera.camera_matrix, zedCamera.dist, None, zedCamera.new_camera_mtx
+#     )
+
+
+def process_image(image, functions=[gray, blur]):
     for function in functions:
         image = function(image)
     return image

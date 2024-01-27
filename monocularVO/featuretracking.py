@@ -19,7 +19,7 @@ def feature_tracking(image1, image2, corners1, corners2):
     )
     # To get rid of points for the KLT tracking where the status is 0 or if they are not in the frame
 
-    corners1 = corners1[status == 1]
-    corners2 = corners2[status == 1]
-
-    return corners1, corners2
+    if corners1 is not None and corners2 is not None:
+        corners1 = corners1[status == 1]
+        corners2 = corners2[status == 1]
+        return corners1, corners2
