@@ -3,26 +3,47 @@
 # Python 2/3 compatibility
 from __future__ import print_function
 
+from typing import Any
+
 import cv2 as cv
 import numpy as np
 
 
-def resize(img, fx, fy):
+def resize(img, fx, fy) -> np.ndarray[Any, np.dtype[np.generic]]:
+    """
+    Resizes the image by a factor of fx horizontally and fy vertically and returns an image
+
+    Arguments:
+    img - Image being resized
+    fx - X scale
+    fy = Y scale
+    """
     return cv.resize(img, None, fx=fx, fy=fy)
 
 
-def make_mask(img):
+def img_prep(img: np.ndarray[Any, np.dtype[np.generic]]) -> np.ndarray[Any, np.dtype[np.generic]]:
+    """
+    Converts image to greyscale and blurred version of that image and returns it
+
+    - img - Image being converted
+    """
+    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    return cv.GaussianBlur(gray, (5, 5), 0)
+
+
+def make_ver_mask(img: np.ndarray[Any, np.dtype[np.generic]]):
+    """
+
+
+    :param img:
+    :return:
+    """
     h, w = img.shape
     rectangle = np.array([[0, h/3], [w, h/3], [w, h], [0, h]])
 
     mask = cv.fillPoly(np.zeros_like(img), np.int32([rectangle]), 255)
     mask = cv.bitwise_and(img, mask)
     return mask
-
-
-def img_prep(img):
-    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-    return cv.GaussianBlur(gray, (5, 5), 0)
 
 
 def edge_detection(img, threshold1, threshold2):
@@ -55,7 +76,7 @@ def main():
     end = False
 
     curr_frame = 0
-    while curr_frame < int(frame_count) and not end:
+    while (curr_frame + 8) < int(frame_count) and not end:
         # To speed process, the software only runs on every 8th frame
         # Possible implementation of only checking every nth millisecond/second
         for i in range(7):
@@ -68,7 +89,7 @@ def main():
         img = resize(img, 0.25, 0.25)
 
         # Applies greyscale and gaussian blur
-        prepped_img = make_mask(img_prep(img))
+        prepped_img = make_ver_mask(img_prep(img))
 
         # START OF EDGE DETECTION 1 - CANNY EDGE DETECTION
         # Threshold values were selected based on previous testing
@@ -76,25 +97,30 @@ def main():
 
         # Draws edges on transparent image
         edges_transparent = np.zeros((540, 960, 4), dtype=np.uint8)
-        edges_transparent[edges != 0] = (0, 0, 255, 255)
+        edges_transparent[edges != 0] = (255, 0, 0, 255)
 
         # END OF EDGE DETECTION 1
 
         # START OF EDGE DETECTION 2 - WHITE MASK
-        conts = cv.findContours(white_mask(prepped_img), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-        conts = conts[0] if len(conts) == 2 else conts[1]
+        contours = cv.findContours(white_mask(prepped_img), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+        contours = contours[0] if len(contours) == 2 else contours[1]
 
         # Draws contours on transparent image
-        conts_transparent = np.zeros((540, 960, 4), dtype=np.uint8)
-        cv.drawContours(conts_transparent, conts, -1, (255, 255, 255, 255), 10)  # change first three channels to any color you want.
+        contours_transparent = np.zeros((540, 960, 4), dtype=np.uint8)
+        cv.drawContours(contours_transparent, contours, -1, (0, 255, 0, 255), 10)  # change first three channels to any color you want.
 
         # END OF EDGE DETECTION 2
 
         # Combines EDGE DETECTION 1 & 2
-        combined_detection = cv.bitwise_and(conts_transparent, edges_transparent)
+        combined_detection = cv.bitwise_and(contours_transparent, edges_transparent)
 
         # Overlays combined edge detections with current video frame
         result = combine_images_alpha(combined_detection, img)
+        result_white = combine_images_alpha(contours_transparent, img)
+        result_canny = combine_images_alpha(edges_transparent, img)
+
+        # Testing for original vertical vs horizontal lines
+        # np.arctan(result) * 180 / np.pi
 
         # Displays video frame with edge detection overlaid
         cv.imshow('edge', result)
